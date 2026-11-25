@@ -29,23 +29,23 @@ fn from_hex(s : String) -> Bytes {
 ///|
 test "Python -> MoonSCTP: bitwise Castagnoli CRC-32C matches random 77B vector" {
   let msg = from_hex(
-    "edc3f09ea585f194d203676ec898e8c95cf07d2815d79b1ed69f9fa08ab77e1a" +
-    "02679b0edb43d4bf93510d9404202c7c32d9916a4016978a949036c43bb48824" +
-    "42020fd4f369ca04ea3b26235a",
+    "8fe7123f9c717fe4f67024ee3edb1610a0dfe2b453e4c7afa5955d6b6597460a" +
+    "e717d9f53a590b6803e3472db213738299de8e026471af43aaa14246a802ddd2" +
+    "eb18421e04118ac8df7208406d",
   )
-  assert_eq(@crc32c.crc32c(msg), 0x4D353402U)
+  assert_eq(@crc32c.crc32c(msg), 0x5D00109AU)
 }
 
 ///|
 test "Python -> MoonSCTP: bundled DATA(TSN wrap)+SACK+FORWARD_TSN decode & byte-exact re-encode" {
   let wire = from_hex(
-    "c0001388cafebabe63332d5400030023fffffffe0001ffff000000335e7b363b" +
-    "dbad980bc5345feeb67f91bb3865020000070027000000000002000000000035" +
-    "492f96d69ab5986da8748271271da9c3d6bc44cc2059b30003000018ffffffff" +
+    "c0001388cafebabe4dc404b500030023fffffffe0001ffff00000033c3afdacf" +
+    "06115fe3f6f1a5e873713fc1e7e3c30000070027000000000002000000000035" +
+    "042dac6dbc6588c256beb9b96edd4e1489a7ffb9a0d01f0003000018ffffffff" +
     "00018000000100010003000500000002c000000c0000000100010000",
   )
-  let expected_p1 = from_hex("5e7b363bdbad980bc5345feeb67f91bb386502")
-  let expected_p2 = from_hex("492f96d69ab5986da8748271271da9c3d6bc44cc2059b3")
+  let expected_p1 = from_hex("c3afdacf06115fe3f6f1a5e873713fc1e7e3c3")
+  let expected_p2 = from_hex("042dac6dbc6588c256beb9b96edd4e1489a7ffb9a0d01f")
   let pkt = @packet.decode_packet(wire[:])
   assert_eq(pkt.src_port, 49152U)
   assert_eq(pkt.dst_port, 5000U)
@@ -100,13 +100,13 @@ test "Python -> MoonSCTP: bundled DATA(TSN wrap)+SACK+FORWARD_TSN decode & byte-
 ///|
 test "Python -> MoonSCTP: INIT_ACK + Python-sealed 64B HMAC-SHA256 Cookie & control bundle" {
   let secret = from_hex(
-    "9dc4848ca4b81cf2904efbd4bce23799c317470495749c94b1136d95862de128",
+    "a3c52a03b215eefbab75573fc6ba95ddea39db15ceb87716a3692398cabce28d",
   )
   let wire_iack = from_hex(
-    "1388c000deadbeef82da66290200005ccafebabe0004000000080010fffffffd" +
+    "1388c000deadbeefe46e71e20200005ccafebabe0004000000080010fffffffd" +
     "00070044cafebabedeadbeeffffffffd8000000100080010000100000000019e" +
-    "808363f8f94328ab4ef231a6a39012b06c2ada7d5625deb3033b73185f193da9" +
-    "75505a1cc0000004",
+    "808363f8e53ad85d20046c7b5c656b524bd6f72857acb52a3074faab622fe179" +
+    "421ace20c0000004",
   )
   let pkt_iack = @packet.decode_packet(wire_iack[:])
   assert_eq(pkt_iack.verification_tag, 0xDEADBEEFU)
@@ -136,10 +136,10 @@ test "Python -> MoonSCTP: INIT_ACK + Python-sealed 64B HMAC-SHA256 Cookie & cont
   assert_eq(@packet.encode_packet(pkt_iack), wire_iack)
 
   let wire_ctrl = from_hex(
-    "1388c000deadbeef5c9b1dae04000015000100117fa4f6ec850319f8ac97c999" +
-    "270000000e010004",
+    "1388c000deadbeefe54f8fab040000150001001163765f5361bdd90aebada313" +
+    "1d0000000e010004",
   )
-  let expected_hb = from_hex("7fa4f6ec850319f8ac97c99927")
+  let expected_hb = from_hex("63765f5361bdd90aebada3131d")
   let pkt_ctrl = @packet.decode_packet(wire_ctrl[:])
   assert_eq(pkt_ctrl.chunks.length(), 2)
   assert_eq(pkt_ctrl.chunks[0], @packet.Chunk::Heartbeat(expected_hb))
