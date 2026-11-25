@@ -1,5 +1,8 @@
 import {
-  "CoolrfulDARkness/moonsctp/crc32c",
   "CoolrfulDARkness/moonsctp/cookie",
   "CoolrfulDARkness/moonsctp/packet",
 }
+
+import {
+  "CoolrfulDARkness/moonsctp/crc32c",
+} for "test"

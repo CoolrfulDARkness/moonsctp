@@ -868,3 +868,201 @@ test "adv 25: invalid Config parameters rejected with InvalidConfig" {
   }
   assert_true(e4)
 }
+
+///|
+test "adv 26: COOKIE_ECHO rejected on already-Established server (anti-hijack)" {
+  let (client, server, c_cfg, s_cfg) = adv_establish()
+  // Attacker mints a fresh valid cookie via process_stateless_init
+  let attacker_init = encode_raw({
+    src_port: c_cfg.local_port,
+    dst_port: s_cfg.local_port,
+    verification_tag: 0U,
+    chunks: [
+      @packet.Chunk::Init({
+        initiate_tag: 0xDEAD1234U,
+        a_rwnd: 65536U,
+        num_outbound_streams: 4U,
+        num_inbound_streams: 4U,
+        initial_tsn: 9999U,
+        forward_tsn_supported: true,
+      }),
+    ],
+  })
+  let init_ack_raw = @association.Association::process_stateless_init(
+    s_cfg,
+    attacker_init[:],
+    500UL,
+  )
+  let ack_pkt = @packet.decode_packet(init_ack_raw[:]) catch {
+    _ => abort("decode init_ack failed")
+  }
+  let fresh_cookie = match ack_pkt.chunks[0] {
+    @packet.Chunk::InitAck(ia) => ia.state_cookie
+    _ => abort("expected INIT_ACK")
+  }
+  let hijack_pkt = encode_raw({
+    src_port: c_cfg.local_port,
+    dst_port: s_cfg.local_port,
+    verification_tag: s_cfg.local_vtag,
+    chunks: [@packet.Chunk::CookieEcho(fresh_cookie)],
+  })
+  let mut hijacked = false
+  try {
+    let _ = server.handle_packet(hijack_pkt[:], 510UL)
+  } catch {
+    @association.SecurityViolation(_) => hijacked = true
+    _ => ()
+  }
+  assert_true(hijacked)
+  // Legitimate established session remains intact
+  client.send(b"still-alive", @association.SendOptions::reliable(0U), 520UL)
+  let pkts = client.poll_outbound()
+  let ev = server.handle_packet(pkts[0][:], 530UL)
+  assert_eq(ev.length(), 1)
+}
+
+///|
+test "adv 27: mismatched src/dst port rejected with SecurityViolation" {
+  let (_, server, c_cfg, s_cfg) = adv_establish()
+  let wrong_dst = encode_raw({
+    src_port: c_cfg.local_port,
+    dst_port: s_cfg.local_port + 1U,
+    verification_tag: s_cfg.local_vtag,
+    chunks: [@packet.Chunk::Heartbeat(b"hb")],
+  })
+  let mut dst_err = false
+  try {
+    let _ = server.handle_packet(wrong_dst[:], 100UL)
+  } catch {
+    @association.SecurityViolation(_) => dst_err = true
+    _ => ()
+  }
+  assert_true(dst_err)
+
+  let wrong_src = encode_raw({
+    src_port: c_cfg.local_port + 9U,
+    dst_port: s_cfg.local_port,
+    verification_tag: s_cfg.local_vtag,
+    chunks: [@packet.Chunk::Heartbeat(b"hb")],
+  })
+  let mut src_err = false
+  try {
+    let _ = server.handle_packet(wrong_src[:], 110UL)
+  } catch {
+    @association.SecurityViolation(_) => src_err = true
+    _ => ()
+  }
+  assert_true(src_err)
+}
+
+///|
+test "adv 28: future SACK cum_tsn_ack >= next_tsn ignored without dropping future data" {
+  let (client, server, c_cfg, s_cfg) = adv_establish()
+  let future_sack = encode_raw({
+    src_port: s_cfg.local_port,
+    dst_port: c_cfg.local_port,
+    verification_tag: c_cfg.local_vtag,
+    chunks: [
+      @packet.Chunk::Sack({
+        cum_tsn_ack: c_cfg.initial_tsn + 500U,
+        a_rwnd: 65536U,
+        gap_blocks: [],
+        dup_tsns: [],
+      }),
+    ],
+  })
+  let _ = client.handle_packet(future_sack[:], 100UL)
+  // Subsequent message must still be transmitted and acknowledged normally
+  client.send(
+    b"must-not-be-pruned",
+    @association.SendOptions::reliable(0U),
+    110UL,
+  )
+  let pkts = client.poll_outbound()
+  assert_eq(pkts.length(), 1)
+  let ev = server.handle_packet(pkts[0][:], 120UL)
+  assert_eq(ev.length(), 1)
+}
+
+///|
+test "adv 29: stale/backward FORWARD_TSN never corrupts ordered stream next_ssn" {
+  let (client, server, c_cfg, s_cfg) = adv_establish()
+  // Deliver message ssn=0 (tsn=1000)
+  client.send(b"msg-0", @association.SendOptions::reliable(0U), 100UL)
+  let p0 = client.poll_outbound()
+  let ev0 = server.handle_packet(p0[0][:], 110UL)
+  assert_eq(ev0.length(), 1)
+  let _ = server.poll_outbound()
+
+  // Inject stale FORWARD_TSN with new_cum_tsn == current cum_tsn (1000) trying to skip ssn=5
+  let stale_ft = encode_raw({
+    src_port: c_cfg.local_port,
+    dst_port: s_cfg.local_port,
+    verification_tag: s_cfg.local_vtag,
+    chunks: [
+      @packet.Chunk::ForwardTsn({
+        new_cum_tsn: 1000U,
+        streams: [{ stream_id: 0U, stream_seq: 5U, }],
+      }),
+    ],
+  })
+  let _ = server.handle_packet(stale_ft[:], 120UL)
+
+  // Legitimate next message ssn=1 (tsn=1001) must still deliver cleanly!
+  client.send(b"msg-1", @association.SendOptions::reliable(0U), 130UL)
+  let p1 = client.poll_outbound()
+  let ev1 = server.handle_packet(p1[0][:], 140UL)
+  assert_eq(ev1.length(), 1)
+}
+
+///|
+test "adv 30: far-ahead OOO TSN flood bounded and high-bit a_rwnd (0x80000000) non-stalling" {
+  let (client, server, c_cfg, s_cfg) = adv_establish()
+  // Flood far-ahead TSNs (> 4096 ahead) — must be silently dropped without OOM or SACK blowup
+  for k = 0; k < 20; k = k + 1 {
+    let far_pkt = encode_raw({
+      src_port: c_cfg.local_port,
+      dst_port: s_cfg.local_port,
+      verification_tag: s_cfg.local_vtag,
+      chunks: [
+        @packet.Chunk::Data({
+          tsn: 1000U + 10000U + (k * 2).reinterpret_as_uint(),
+          stream_id: 0U,
+          stream_seq: (k + 100).reinterpret_as_uint(),
+          ppid: 0U,
+          unordered: false,
+          beginning: true,
+          ending: true,
+          payload: b"flood",
+        }),
+      ],
+    })
+    let ev = server.handle_packet(far_pkt[:], 100UL + k.to_uint64())
+    assert_eq(ev.length(), 0)
+    let _ = server.poll_outbound()
+  }
+
+  // Feed a valid SACK with high-bit a_rwnd = 0x80000000U — must saturate positive and not stall!
+  client.send(b"first", @association.SendOptions::reliable(0U), 200UL)
+  let p0 = client.poll_outbound()
+  let _ = server.handle_packet(p0[0][:], 210UL)
+  let _ = server.poll_outbound()
+  let high_rwnd_sack = encode_raw({
+    src_port: s_cfg.local_port,
+    dst_port: c_cfg.local_port,
+    verification_tag: c_cfg.local_vtag,
+    chunks: [
+      @packet.Chunk::Sack({
+        cum_tsn_ack: 1000U,
+        a_rwnd: 0x80000000U,
+        gap_blocks: [],
+        dup_tsns: [],
+      }),
+    ],
+  })
+  let _ = client.handle_packet(high_rwnd_sack[:], 220UL)
+  client.send(b"second", @association.SendOptions::reliable(0U), 230UL)
+  client.send(b"third", @association.SendOptions::reliable(0U), 231UL)
+  // Both chunks must be emitted immediately (not stalled to 1 packet by negative i32 overflow!)
+  assert_eq(client.poll_outbound().length(), 2)
+}

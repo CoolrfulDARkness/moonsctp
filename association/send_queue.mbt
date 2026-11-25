@@ -50,6 +50,15 @@ priv struct SendQueue {
 }
 
 ///|
+fn u32_to_i32_sat(v : UInt32) -> Int32 {
+  if v > 0x7FFFFFFFU {
+    0x7FFFFFFF
+  } else {
+    v.reinterpret_as_int()
+  }
+}
+
+///|
 fn SendQueue::new(
   initial_tsn : UInt32,
   num_out_streams : UInt32,
@@ -65,7 +74,7 @@ fn SendQueue::new(
     out_stream_ssn.push(0U)
   }
   let init_cwnd = min_int(4 * mtu, max_int(2 * mtu, 4380))
-  let init_ssthresh = max_int(peer_rwnd.reinterpret_as_int(), 4 * mtu)
+  let init_ssthresh = max_int(u32_to_i32_sat(peer_rwnd), 4 * mtu)
   let rto_min = if DEFAULT_RTO_MIN_MS < rto_initial_ms {
     DEFAULT_RTO_MIN_MS
   } else {
@@ -339,7 +348,11 @@ fn SendQueue::update_rto(self : SendQueue, sample_ms : UInt64) -> Unit {
 
 ///|
 /// Acknowledges all queued chunks up to peer_cum_tsn (e.g., from SHUTDOWN chunk).
+/// Rejects future TSNs >= self.next_tsn to prevent premature pruning of unsent chunks.
 fn SendQueue::ack_up_to(self : SendQueue, cum_tsn : UInt32) -> Unit {
+  if !@packet.tsn_lt(cum_tsn, self.next_tsn) {
+    return
+  }
   if @packet.tsn_gt(cum_tsn, self.peer_cum_tsn_ack) {
     self.peer_cum_tsn_ack = cum_tsn
     if @packet.tsn_gt(cum_tsn, self.advanced_peer_ack_point) {
@@ -377,7 +390,8 @@ fn SendQueue::on_sack(
   sack : @packet.SackChunk,
   now_ms : UInt64,
 ) -> Unit {
-  if @packet.tsn_lt(sack.cum_tsn_ack, self.peer_cum_tsn_ack) {
+  if @packet.tsn_lt(sack.cum_tsn_ack, self.peer_cum_tsn_ack) ||
+    !@packet.tsn_lt(sack.cum_tsn_ack, self.next_tsn) {
     return
   }
   self.peer_rwnd = sack.a_rwnd
@@ -423,6 +437,9 @@ fn SendQueue::on_sack(
     }
     let gap_start = sack.cum_tsn_ack + blk.start
     let gap_end = sack.cum_tsn_ack + blk.end
+    if !@packet.tsn_lt(gap_end, self.next_tsn) {
+      continue
+    }
     for i = 0; i < self.queue.length(); i = i + 1 {
       let c = self.queue[i]
       if @packet.tsn_ge(c.chunk.tsn, gap_start) &&
@@ -584,7 +601,7 @@ fn SendQueue::collect_outbound(self : SendQueue, now_ms : UInt64) -> FlushBatch 
   }
 
   let mut flight = self.flight_bytes()
-  let rwnd_limit = self.peer_rwnd.reinterpret_as_int()
+  let rwnd_limit = u32_to_i32_sat(self.peer_rwnd)
 
   // 1. Retransmissions first
   for i = 0; i < self.queue.length(); i = i + 1 {

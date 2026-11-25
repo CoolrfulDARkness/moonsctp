@@ -33,6 +33,7 @@ flowchart TD
     end
 
     ROOT --> ASSOC
+    ROOT --> COOKIE
     ROOT --> PKT
     ROOT --> CRC
     CMD --> ROOT
@@ -63,11 +64,11 @@ flowchart TD
 
 | 包路径 | 内部依赖 | 核心公开类型与函数（核对自各包 `pkg.generated.mbti`） | 封装边界 |
 | :--- | :--- | :--- | :--- |
-| `crc32c` | 无 | `Crc32c`（`new`/`update`/`update_view`/`finalize`）、`crc32c`、`crc32c_view`、`sctp_packet_checksum` | 零依赖；内部 4×256 切片表为包私有常量 |
+| `crc32c` | 无 | `Crc32c`（`new`/`update`/`update_view`/`finalize`）、`crc32c`、`crc32c_view`、`sctp_packet_checksum` | 零依赖；`Crc32c` 内部寄存器 `state` 严格 `priv` 隐藏（`// private fields`），4×256 切片表为包私有常量 |
 | `cookie` | 无 | `COOKIE_WIRE_LEN`（64B）、`CookieError`（`InvalidLength`/`InvalidMac`/`Expired`）、`CookiePayload`（8 字段）、`sha256`、`hmac_sha256`、`ct_eq`、`seal_cookie`、`open_cookie` | 零依赖；`open_cookie` 先校验长度、再恒定时间验 HMAC、再校生命周期 |
 | `packet` | `crc32c` | 14 项 `CHUNK_*` 常量、4 项 `FLAG_DATA_*` 常量、`COMMON_HEADER_LEN`（12B）、`PacketError`（8 变体）、`Packet`、`Chunk`（14 类变体）及各 Chunk 结构体、`encode_packet`、`decode_packet`、RFC 1982 `tsn_lt`/`tsn_le`/`tsn_gt`/`tsn_ge`/`tsn_diff`/`ssn_lt`/`ssn_le`/`ssn_inc` | 纯无状态线级编解码，严格校验小端 CRC-32C、4B 边界与未知 Chunk 策略 |
 | `association` | `crc32c`, `cookie`, `packet` | `DEFAULT_*` 常量、`AssocError`（6 变体）、`AssocState`（8 状态）、`ReliabilityPolicy`（`Reliable`/`MaxRetransmits`/`TimedMs`）、`SendOptions`、`DeliveredMessage`、`Event`（6 变体）、`Config`（`default_client`/`default_server`）、`AssocStats`、`Association`（`new_client`/`new_server`/`process_stateless_init`/`connect`/`handle_packet`/`send`/`send_heartbeat`/`tick`/`poll_outbound`/`shutdown`/`abort`/`state`/`stats`） | `Association` 全部内部状态字段（发送队列、接收队列、`cookie_secret`、重放缓存、拥塞窗口、RTO、VTag）严格 `priv` 隐藏（`// private fields`） |
-| `moonsctp`（根门面） | `association`, `packet`, `crc32c` | 顶层便捷入口：`crc32c`、`encode_packet`、`decode_packet`、`new_client`、`new_server`、`process_stateless_init`、`client_config`、`server_config`、`reliable_opts`、`unordered_opts`、`partial_retransmit_opts`、`partial_timed_opts`、`run_handshake_loop` | 面向 `mooncakes.io` 用户的低门槛统一导入面 |
+| `moonsctp`（根门面） | `association`, `cookie`, `packet`, `crc32c` | 顶层便捷入口：`crc32c`、`seal_cookie`、`open_cookie`、`encode_packet`、`decode_packet`、`new_client`、`new_server`、`process_stateless_init`、`client_config`、`server_config`、`reliable_opts`、`unordered_opts`、`partial_retransmit_opts`、`partial_timed_opts`、`run_handshake_loop` | 面向 `mooncakes.io` 用户的低门槛统一导入面 |
 
 ---
 
@@ -99,30 +100,31 @@ flowchart TD
 
 ## 3. 核心架构与安全防御设计
 
-### 3.1 4 路切片查表 Castagnoli CRC-32C（`crc32c/crc32c.mbt`）
+### 3.1 4 路切片查表 Castagnoli CRC-32C 与单次验签热路径（`crc32c/crc32c.mbt`）
 
-- 采用 Castagnoli 反射多项式 `0x82F63B78`（标准多项式 `0x1EDC6F41`），启动时一次性构建 4×256（1024 项）Slicing-by-4 查表 `tables[0..3]`。
+- 采用 Castagnoli 反射多项式 `0x82F63B78`（标准多项式 `0x1EDC6F41`），启动时一次性构建 4×256（1024 项）Slicing-by-4 查表 `tables[0..3]`，`Crc32c` 内部寄存器字段 `state` 严格标记 `priv`。
 - 主循环每次吞吐 4 字节（32-bit 小端字）执行 4 次并行查表异或，尾部不足 4 字节退回单字节查表，在无 SIMD 依赖的纯 Wasm/JS/Native 环境下兼顾高吞吐与零分支简洁性。
-- `sctp_packet_checksum` 对报文 `[0..8)` + 4 字节零值 + `[12..len)` 流式计算校验和，无需复制整包即可完成零拷贝验签。
+- `sctp_packet_checksum` 对报文 `[0..8)` + 4 字节零值 + `[12..len)` 流式计算校验和，无需复制整包即可完成零拷贝验签；`association` 层 `decode_verified_packet` 直接复用单次 `@packet.decode_packet` 验签并捕获 `@packet.BadChecksum` 映射为 `SecurityViolation`，消除收包热路径双算开销。
 
-### 3.2 无状态抗 SYN Flood HMAC-SHA256 Cookie（`cookie/` & `association/assoc.mbt`）
+### 3.2 无状态抗 SYN Flood HMAC-SHA256 Cookie 与防劫持边界（`cookie/` & `association/assoc.mbt`）
 
-- 服务端调用静态入口 `Association::process_stateless_init(cfg, raw_init, now_ms)` 响应 `INIT`：在**不分配任何关联状态或接收/发送缓冲区**的前提下，将协商元数据（`local_vtag`、`peer_vtag`、`local_tsn`、`peer_tsn`、`out_streams`、`in_streams`、`peer_arwnd`、`created_ms` 共 32B）与 32B `HMAC-SHA256(cookie_secret, payload)` 封装为 64B State Cookie 随 `INIT_ACK` 返回。
-- 收到 `COOKIE_ECHO` 时，`open_cookie` 先校验长度（64B），再用无短路恒定时间 `@cookie.ct_eq` 验证 32B MAC，最后校验 `now_ms - created_ms <= cookie_lifetime_ms`（防过期 Cookie），并结合关联侧重放防护阻止同一 Cookie 重复建立会话。
+- 服务端调用静态入口 `Association::process_stateless_init(cfg, raw_init, now_ms)` 响应 `INIT`：严格校验 `dst_port == cfg.local_port && src_port != 0U`、零 VTag 及非零流数，在**不分配任何关联状态或接收/发送缓冲区**的前提下，将协商元数据（`local_vtag`、`peer_vtag`、`local_tsn`、`peer_tsn`、`out_streams`、`in_streams`、`peer_arwnd`、`created_ms` 共 32B）与 32B `HMAC-SHA256(cookie_secret, payload)` 封装为 64B State Cookie 随 `INIT_ACK` 返回。
+- 收到 `COOKIE_ECHO` 时，强制要求服务端处于 `Closed` 状态（已建连等非 `Closed` 状态收到新 `COOKIE_ECHO` 立即抛出 `SecurityViolation`，杜绝合法 Cookie 覆写活跃会话的劫持攻击）；`open_cookie` 先校验长度（64B），再用无短路恒定时间 `@cookie.ct_eq` 验证 32B MAC，最后校验 `now_ms - created_ms <= cookie_lifetime_ms`（防过期 Cookie），并结合带 256 条 FIFO 容量上限的 `consumed_cookies` 重放表阻止重复建连与内存无限增长。
 
-### 3.3 每流独立 `RecvTracker` 消除跨流队头阻塞（`association/recv_queue.mbt`）
+### 3.3 每流独立 `RecvTracker` 消除跨流队头阻塞与多层防 OOM 上限（`association/recv_queue.mbt`）
 
 - 与 TCP 单一字节流模型不同，`RecvTracker` 将传输层 TSN 确认（全局 `cum_tsn_ack` + `gap_blocks`）与消息层流序交付彻底解耦：
   - 每个 `stream_id` 独立维护自己的 `next_ssn` 与 `B`/`E` 分片重组缓冲；
   - 当 Stream 0 的某个 TSN 丢失导致 Stream 0 暂缓交付时，Stream 1..N 上已集齐的有序消息与所有 `U=1` 无序消息**立即零延迟交付给应用层**；
-  - 严格限制单条重组消息不超过 `Config.max_message_size`（默认 65536B），防止恶意分片缺失 `E` 标志导致接收端 OOM DoS。
+  - 实施四层防 OOM DoS 硬上限：① 单条重组消息不超过 `Config.max_message_size`（默认 65536B）；② 全局接收缓冲不超过 `max(base_arwnd, max_message_size * 2)` 且每流 `pending_ordered` 槽数不超过 128；③ 乱序 TSN 前跳距离不超过 4096 且 `out_of_order_tsns` 不超过 1024；④ `build_sack()` 将 `gap_blocks` 与 `dup_tsns` 分别截断至最多 64 项，保证生成的 SACK 永不超出单包 65535B 编码限制。
 
-### 3.4 RFC 1982 序列号回绕安全与 PR-SCTP 跳帧解锁
+### 3.4 RFC 1982 序列号回绕安全、未来 SACK 防护与 PR-SCTP 跳帧解锁
 
 - 全栈对所有 TSN 比较统一调用 `packet.tsn_lt`/`tsn_le`/`tsn_gt`/`tsn_ge`/`tsn_diff`（32-bit 无符号半空间有符号差值），对 SSN 比较统一调用 `ssn_lt`/`ssn_le`/`ssn_inc`（16-bit 回绕），杜绝 `0xFFFFFFFF -> 0x00000000` 处的普通整型 `<` 比较失效。
-- 在 PR-SCTP 模式下，当某条消息因 `MaxRetransmits(n)` 或 `TimedMs(ms)` 被发送端放弃时，发送端清理未确认分片并发送 `FORWARD_TSN(new_cum_tsn, streams)`；接收端据此同步推进 `cum_tsn_ack`、丢弃被跳过的残缺分片并推进对应流的 `next_ssn`，使该流后续消息立刻恢复交付。
+- **未来确认与窗口溢出防护**：`SendQueue::on_sack` 与 `ack_up_to` 严格要求 `tsn_lt(cum_tsn, self.next_tsn)`（并忽略超出 `self.next_tsn` 的非法 Gap Block），防止恶意对端伪造超前 `cum_tsn_ack` 导致后续未发送数据被静默丢弃；对 `a_rwnd` / `base_arwnd` 采用饱和钳位 `u32_to_i32_sat`（`> 0x7FFFFFFFU` 钳位至 `0x7FFFFFFF`），防止 `a_rwnd >= 0x80000000U` 引发有符号 `Int32` 负数溢出锁死拥塞窗口。
+- 在 PR-SCTP 模式下，当某条消息因 `MaxRetransmits(n)` 或 `TimedMs(ms)` 被发送端放弃时，发送端清理未确认分片并发送 `FORWARD_TSN(new_cum_tsn, streams)`；接收端仅在 `new_cum_tsn` 严格超前当前 `cum_tsn` 且前跳不超过窗口上限（`<= 4096`）时才推进 `cum_tsn_ack` 与受影响流的 `next_ssn`，彻底隔离过期/倒退 `FORWARD_TSN` 对有序流的破坏。
 
-### 3.5 `priv` 严格封装与抗伪造报文防御
+### 3.5 `priv` 严格封装、端口绑定与抗伪造报文防御
 
-- `Association` 结构体全部内部状态字段均标记 `priv`（见 `association/pkg.generated.mbti` 仅暴露 `// private fields`），防止外部绕过状态机直接篡改 `cookie_secret`、窗口、队列或重放表。
-- 严格执行 Verification Tag 校验：伪造或错 VTag 的 `DATA`/`SACK`/`SHUTDOWN`/`ABORT` 均无法影响已建立关联（错 VTag `ABORT` 静默免疫，避免盲目断连攻击）。
+- `Association` 与 `Crc32c` 内部敏感状态字段均标记 `priv`（通过各包 `pkg.generated.mbti` 明确验证为 `// private fields`），防止外部绕过状态机直接篡改 `cookie_secret`、窗口、队列、重放表或 CRC 内部寄存器。
+- 严格执行**端口绑定 + Verification Tag** 双重校验：`handle_packet` 强制校验 `dst_port == local_port` 与 `src_port == remote_port`（非 `Closed` 或配置非零远端端口时）以及 `verification_tag`（`INIT` 必须为 0，已建连必须匹配 `local_vtag`）；错 VTag 伪造 `ABORT` 静默免疫，合法首位及捆绑 `ABORT` 均完整释放收发队列并关闭关联。

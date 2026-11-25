@@ -96,7 +96,7 @@ moonsctp/
 ├── crc32c/         # 4 路切片查表 Castagnoli CRC-32C (RFC 9260 Appendix B)
 ├── cookie/         # 纯 MoonBit HMAC-SHA256 无状态抗 SYN Flood 状态 Cookie
 ├── packet/         # 12B 公共头 + 全部 14 类 RFC 9260/3758 Chunk + RFC 1982 序列算术
-├── association/    # Sans-I/O SCTP/PR-SCTP 状态机 + 5 大混沌网络仿真 + 25 项安全对抗测试
+├── association/    # Sans-I/O SCTP/PR-SCTP 状态机 + 5 大混沌网络仿真 + 30 项安全对抗测试
 ├── cmd/main/       # 5 阶段一键可运行实景演示 CLI
 ├── bench/          # 12 项三端性能基准套件 (moon bench)
 ├── harness/        # 零依赖 Python 独立 RFC 9260 解包器与按位 CRC-32C 双向对拍

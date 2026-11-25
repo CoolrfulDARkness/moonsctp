@@ -12,7 +12,7 @@ pub fn sctp_packet_checksum(BytesView) -> UInt32
 
 // Types and methods
 pub struct Crc32c {
-  mut state : UInt32
+  // private fields
 }
 pub fn Crc32c::finalize(Self) -> UInt32
 pub fn Crc32c::new() -> Self

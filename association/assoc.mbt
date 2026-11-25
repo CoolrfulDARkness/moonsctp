@@ -81,23 +81,10 @@ pub fn Association::new_server(cfg : Config) -> Association raise AssocError {
 }
 
 ///|
-fn verify_wire_crc32c(raw : BytesView) -> Unit raise AssocError {
-  if raw.length() < @packet.COMMON_HEADER_LEN {
-    raise PacketError("packet too short: " + raw.length().to_string())
-  }
-  let wire_crc = raw[8].to_uint() |
-    (raw[9].to_uint() << 8) |
-    (raw[10].to_uint() << 16) |
-    (raw[11].to_uint() << 24)
-  let calc_crc = @crc32c.sctp_packet_checksum(raw)
-  if wire_crc != calc_crc {
-    raise SecurityViolation("CRC-32C checksum mismatch")
-  }
-}
+const MAX_CONSUMED_COOKIES : Int32 = 256
 
 ///|
 fn decode_verified_packet(raw : BytesView) -> @packet.Packet raise AssocError {
-  verify_wire_crc32c(raw)
   @packet.decode_packet(raw) catch {
     @packet.BadChecksum(_, _) =>
       raise SecurityViolation("CRC-32C checksum mismatch")
@@ -182,6 +169,9 @@ pub fn Association::process_stateless_init(
 ) -> Bytes raise AssocError {
   validate_config(cfg, true)
   let pkt = decode_verified_packet(raw_pkt)
+  if pkt.dst_port != cfg.local_port || pkt.src_port == 0U {
+    raise SecurityViolation("INIT packet port mismatch")
+  }
   if pkt.verification_tag != 0U {
     raise SecurityViolation("INIT packet must carry zero Verification Tag")
   }
@@ -334,6 +324,10 @@ pub fn Association::handle_packet(
   if pkt.chunks.length() == 0 {
     raise PacketError("SCTP packet contains no chunks")
   }
+  if pkt.dst_port != self.cfg.local_port ||
+    (self.cfg.remote_port != 0U && pkt.src_port != self.cfg.remote_port) {
+    raise SecurityViolation("packet port mismatch")
+  }
   self.packets_recv = self.packets_recv + 1
 
   let events : Array[Event] = []
@@ -462,6 +456,9 @@ pub fn Association::handle_packet(
         if !self.is_server {
           raise SecurityViolation("client does not accept COOKIE_ECHO")
         }
+        if self.assoc_state != Closed {
+          raise SecurityViolation("COOKIE_ECHO rejected outside Closed state")
+        }
         let payload = @cookie.open_cookie(
           self.cfg.cookie_secret,
           cookie_bytes,
@@ -481,6 +478,9 @@ pub fn Association::handle_packet(
         let digest = @cookie.sha256(cookie_bytes)
         if self.is_cookie_consumed(digest) {
           raise SecurityViolation("replayed state cookie rejected")
+        }
+        if self.consumed_cookies.length() >= MAX_CONSUMED_COOKIES {
+          let _ = self.consumed_cookies.remove(0)
         }
         self.consumed_cookies.push(digest)
 
@@ -660,6 +660,8 @@ pub fn Association::handle_packet(
         self.assoc_state = Closed
         self.t1_deadline_ms = None
         self.t2_deadline_ms = None
+        self.send_q = None
+        self.recv_t = None
         events.push(Event::Aborted(reason))
         return events
       }

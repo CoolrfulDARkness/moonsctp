@@ -26,6 +26,21 @@ priv struct StreamRecvState {
 }
 
 ///|
+const MAX_TSN_LOOKAHEAD : Int32 = 4096
+
+///|
+const MAX_OOO_TSNS : Int32 = 1024
+
+///|
+const MAX_PENDING_ORDERED_PER_STREAM : Int32 = 128
+
+///|
+const MAX_SACK_GAPS : Int32 = 64
+
+///|
+const MAX_SACK_DUPS : Int32 = 64
+
+///|
 /// Multi-stream SCTP receive tracker with RFC 1982 TSN tracking, Gap Ack Block
 /// calculation, independent per-stream reassembly, and RFC 3758 FORWARD_TSN support.
 priv struct RecvTracker {
@@ -35,6 +50,7 @@ priv struct RecvTracker {
   streams : Array[StreamRecvState]
   max_message_size : Int32
   base_arwnd : UInt32
+  max_recv_buf : Int32
   mut buffered_bytes : Int32
 }
 
@@ -55,6 +71,13 @@ fn RecvTracker::new(
       unordered_bytes: 0,
     })
   }
+  let arwnd_i32 = u32_to_i32_sat(base_arwnd)
+  let double_msg = if max_message_size > 0x3FFFFFFF {
+    0x7FFFFFFF
+  } else {
+    max_message_size * 2
+  }
+  let max_recv_buf = max_int(arwnd_i32, double_msg)
   {
     cum_tsn: peer_initial_tsn - 1U,
     out_of_order_tsns: [],
@@ -62,6 +85,7 @@ fn RecvTracker::new(
     streams,
     max_message_size,
     base_arwnd,
+    max_recv_buf,
     buffered_bytes: 0,
   }
 }
@@ -264,7 +288,18 @@ fn RecvTracker::on_data(
     raise MessageTooLarge(chunk.payload.length())
   }
   if @packet.tsn_le(chunk.tsn, self.cum_tsn) || self.contains_ooo(chunk.tsn) {
-    self.dup_tsns.push(chunk.tsn)
+    if self.dup_tsns.length() < MAX_SACK_DUPS {
+      self.dup_tsns.push(chunk.tsn)
+    }
+    return []
+  }
+  // Anti-OOM DoS guard: drop far-ahead TSNs or when out-of-order tracking is saturated
+  let lookahead = @packet.tsn_diff(chunk.tsn, self.cum_tsn)
+  if lookahead <= 0 || lookahead > MAX_TSN_LOOKAHEAD {
+    return []
+  }
+  if chunk.tsn != self.cum_tsn + 1U &&
+    self.out_of_order_tsns.length() >= MAX_OOO_TSNS {
     return []
   }
 
@@ -286,6 +321,9 @@ fn RecvTracker::on_data(
     let next_unordered = st.unordered_bytes + chunk.payload.length()
     if next_unordered > self.max_message_size {
       raise MessageTooLarge(next_unordered)
+    }
+    if self.buffered_bytes + chunk.payload.length() > self.max_recv_buf {
+      raise MessageTooLarge(self.buffered_bytes + chunk.payload.length())
     }
     self.insert_tsn(chunk.tsn)
     insert_frag_sorted(st.pending_unordered, {
@@ -324,6 +362,9 @@ fn RecvTracker::on_data(
       let _ = st.pending_ordered.remove(slot_idx)
       raise MessageTooLarge(next_total)
     }
+    if self.buffered_bytes + chunk.payload.length() > self.max_recv_buf {
+      raise MessageTooLarge(self.buffered_bytes + chunk.payload.length())
+    }
     self.insert_tsn(chunk.tsn)
     insert_frag_sorted(slot.frags, {
       tsn: chunk.tsn,
@@ -347,6 +388,12 @@ fn RecvTracker::on_data(
       })
       self.drain_ordered_stream(chunk.stream_id, delivered)
       return delivered
+    }
+    if st.pending_ordered.length() >= MAX_PENDING_ORDERED_PER_STREAM {
+      return delivered
+    }
+    if self.buffered_bytes + chunk.payload.length() > self.max_recv_buf {
+      raise MessageTooLarge(self.buffered_bytes + chunk.payload.length())
     }
     self.insert_tsn(chunk.tsn)
     st.pending_ordered.push({
@@ -379,7 +426,8 @@ fn RecvTracker::on_forward_tsn(
 ) -> Array[DeliveredMessage] {
   let delivered : Array[DeliveredMessage] = []
 
-  if @packet.tsn_gt(ft.new_cum_tsn, self.cum_tsn) {
+  if @packet.tsn_gt(ft.new_cum_tsn, self.cum_tsn) &&
+    @packet.tsn_diff(ft.new_cum_tsn, self.cum_tsn) <= MAX_TSN_LOOKAHEAD {
     self.cum_tsn = ft.new_cum_tsn
     let remaining : Array[UInt32] = []
     for i = 0; i < self.out_of_order_tsns.length(); i = i + 1 {
@@ -416,31 +464,31 @@ fn RecvTracker::on_forward_tsn(
         self.buffered_bytes = max_int(0, self.buffered_bytes - removed_bytes)
       }
     }
-  }
 
-  for i = 0; i < ft.streams.length(); i = i + 1 {
-    let entry = ft.streams[i]
-    if entry.stream_id < self.streams.length().reinterpret_as_uint() {
-      let st = self.streams[entry.stream_id.reinterpret_as_int()]
-      if @packet.ssn_le(st.next_ssn, entry.stream_seq) {
-        st.next_ssn = @packet.ssn_inc(entry.stream_seq)
-      }
-      let kept : Array[OrderedMsgBuf] = []
-      let mut removed_bytes = 0
-      for j = 0; j < st.pending_ordered.length(); j = j + 1 {
-        let slot = st.pending_ordered[j]
-        if @packet.ssn_le(slot.stream_seq, entry.stream_seq) {
-          removed_bytes = removed_bytes + slot.total_bytes
-        } else {
-          kept.push(slot)
+    for i = 0; i < ft.streams.length(); i = i + 1 {
+      let entry = ft.streams[i]
+      if entry.stream_id < self.streams.length().reinterpret_as_uint() {
+        let st = self.streams[entry.stream_id.reinterpret_as_int()]
+        if @packet.ssn_le(st.next_ssn, entry.stream_seq) {
+          st.next_ssn = @packet.ssn_inc(entry.stream_seq)
         }
+        let kept : Array[OrderedMsgBuf] = []
+        let mut removed_bytes = 0
+        for j = 0; j < st.pending_ordered.length(); j = j + 1 {
+          let slot = st.pending_ordered[j]
+          if @packet.ssn_le(slot.stream_seq, entry.stream_seq) {
+            removed_bytes = removed_bytes + slot.total_bytes
+          } else {
+            kept.push(slot)
+          }
+        }
+        st.pending_ordered.clear()
+        for j = 0; j < kept.length(); j = j + 1 {
+          st.pending_ordered.push(kept[j])
+        }
+        self.buffered_bytes = max_int(0, self.buffered_bytes - removed_bytes)
+        self.drain_ordered_stream(entry.stream_id, delivered)
       }
-      st.pending_ordered.clear()
-      for j = 0; j < kept.length(); j = j + 1 {
-        st.pending_ordered.push(kept[j])
-      }
-      self.buffered_bytes = max_int(0, self.buffered_bytes - removed_bytes)
-      self.drain_ordered_stream(entry.stream_id, delivered)
     }
   }
 
@@ -463,7 +511,10 @@ fn RecvTracker::build_sack(self : RecvTracker) -> @packet.SackChunk {
     }
     let start_off = @packet.tsn_diff(block_start, self.cum_tsn)
     let end_off = @packet.tsn_diff(block_end, self.cum_tsn)
-    if start_off >= 1 && end_off >= start_off && end_off <= 65535 {
+    if start_off >= 1 &&
+      end_off >= start_off &&
+      end_off <= 65535 &&
+      gap_blocks.length() < MAX_SACK_GAPS {
       gap_blocks.push({
         start: start_off.reinterpret_as_uint(),
         end: end_off.reinterpret_as_uint(),
@@ -472,13 +523,14 @@ fn RecvTracker::build_sack(self : RecvTracker) -> @packet.SackChunk {
     i = i + 1
   }
 
-  let dup_copy : Array[UInt32] = Array(capacity=self.dup_tsns.length())
-  for k = 0; k < self.dup_tsns.length(); k = k + 1 {
+  let dup_limit = min_int(self.dup_tsns.length(), MAX_SACK_DUPS)
+  let dup_copy : Array[UInt32] = Array(capacity=dup_limit)
+  for k = 0; k < dup_limit; k = k + 1 {
     dup_copy.push(self.dup_tsns[k])
   }
   self.dup_tsns.clear()
 
-  let arwnd = if self.buffered_bytes >= self.base_arwnd.reinterpret_as_int() {
+  let arwnd = if self.buffered_bytes >= u32_to_i32_sat(self.base_arwnd) {
     0U
   } else {
     self.base_arwnd - self.buffered_bytes.reinterpret_as_uint()

@@ -40,7 +40,7 @@ let tables : FixedArray[FixedArray[UInt32]] = build_tables()
 ///|
 /// Streaming CRC-32C checksum builder.
 pub struct Crc32c {
-  mut state : UInt32
+  priv mut state : UInt32
 }
 
 ///|
