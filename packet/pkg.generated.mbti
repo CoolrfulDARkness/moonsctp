@@ -1,0 +1,174 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "CoolrfulDARkness/moonsctp/packet"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const CHUNK_ABORT : Byte = b'\x06'
+
+pub const CHUNK_COOKIE_ACK : Byte = b'\x0B'
+
+pub const CHUNK_COOKIE_ECHO : Byte = b'\x0A'
+
+pub const CHUNK_DATA : Byte = b'\x00'
+
+pub const CHUNK_ERROR : Byte = b'\x09'
+
+pub const CHUNK_FORWARD_TSN : Byte = b'\xC0'
+
+pub const CHUNK_HEARTBEAT : Byte = b'\x04'
+
+pub const CHUNK_HEARTBEAT_ACK : Byte = b'\x05'
+
+pub const CHUNK_INIT : Byte = b'\x01'
+
+pub const CHUNK_INIT_ACK : Byte = b'\x02'
+
+pub const CHUNK_SACK : Byte = b'\x03'
+
+pub const CHUNK_SHUTDOWN : Byte = b'\x07'
+
+pub const CHUNK_SHUTDOWN_ACK : Byte = b'\x08'
+
+pub const CHUNK_SHUTDOWN_COMPLETE : Byte = b'\x0E'
+
+pub const COMMON_HEADER_LEN : Int32 = 12
+
+pub const FLAG_DATA_B : Byte = b'\x02'
+
+pub const FLAG_DATA_E : Byte = b'\x01'
+
+pub const FLAG_DATA_I : Byte = b'\x08'
+
+pub const FLAG_DATA_U : Byte = b'\x04'
+
+pub fn decode_packet(BytesView) -> Packet raise PacketError
+
+pub fn encode_packet(Packet) -> Bytes raise PacketError
+
+pub fn ssn_inc(UInt32) -> UInt32
+
+pub fn ssn_le(UInt32, UInt32) -> Bool
+
+pub fn ssn_lt(UInt32, UInt32) -> Bool
+
+pub fn tsn_diff(UInt32, UInt32) -> Int32
+
+pub fn tsn_ge(UInt32, UInt32) -> Bool
+
+pub fn tsn_gt(UInt32, UInt32) -> Bool
+
+pub fn tsn_le(UInt32, UInt32) -> Bool
+
+pub fn tsn_lt(UInt32, UInt32) -> Bool
+
+// Errors
+#derive(Eq, @debug.Debug)
+pub suberror PacketError {
+  TooShort(Int32)
+  BadChecksum(UInt32, UInt32)
+  InvalidChunkLength(Int32)
+  TruncatedChunk
+  InvalidParameter(String)
+  UnknownCriticalChunk(Byte)
+  InvalidFlags(Byte)
+  ProtocolViolation(String)
+}
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) enum Chunk {
+  Data(DataChunk)
+  Init(InitChunk)
+  InitAck(InitAckChunk)
+  Sack(SackChunk)
+  Heartbeat(Bytes)
+  HeartbeatAck(Bytes)
+  Abort(Bool, Array[ErrorCause])
+  Shutdown(UInt32)
+  ShutdownAck
+  Error(Array[ErrorCause])
+  CookieEcho(Bytes)
+  CookieAck
+  ShutdownComplete(Bool)
+  ForwardTsn(ForwardTsnChunk)
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct DataChunk {
+  tsn : UInt32
+  stream_id : UInt32
+  stream_seq : UInt32
+  ppid : UInt32
+  unordered : Bool
+  beginning : Bool
+  ending : Bool
+  payload : Bytes
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ErrorCause {
+  code : UInt32
+  info : Bytes
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ForwardTsnChunk {
+  new_cum_tsn : UInt32
+  streams : Array[ForwardTsnStream]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ForwardTsnStream {
+  stream_id : UInt32
+  stream_seq : UInt32
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct GapAckBlock {
+  start : UInt32
+  end : UInt32
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct InitAckChunk {
+  initiate_tag : UInt32
+  a_rwnd : UInt32
+  num_outbound_streams : UInt32
+  num_inbound_streams : UInt32
+  initial_tsn : UInt32
+  state_cookie : Bytes
+  forward_tsn_supported : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct InitChunk {
+  initiate_tag : UInt32
+  a_rwnd : UInt32
+  num_outbound_streams : UInt32
+  num_inbound_streams : UInt32
+  initial_tsn : UInt32
+  forward_tsn_supported : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Packet {
+  src_port : UInt32
+  dst_port : UInt32
+  verification_tag : UInt32
+  chunks : Array[Chunk]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct SackChunk {
+  cum_tsn_ack : UInt32
+  a_rwnd : UInt32
+  gap_blocks : Array[GapAckBlock]
+  dup_tsns : Array[UInt32]
+}
+
+// Type aliases
+
+// Traits
