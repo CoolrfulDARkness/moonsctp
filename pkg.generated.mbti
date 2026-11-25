@@ -1,7 +1,42 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "CoolrfulDARkness/moonsctp"
 
+import {
+  "CoolrfulDARkness/moonsctp/association",
+  "CoolrfulDARkness/moonsctp/cookie",
+  "CoolrfulDARkness/moonsctp/packet",
+}
+
 // Values
+pub fn client_config(UInt32, UInt32, UInt32, UInt32, num_outbound_streams? : UInt32, num_inbound_streams? : UInt32) -> @association.Config
+
+pub fn crc32c(Bytes) -> UInt32
+
+pub fn decode_packet(BytesView) -> @packet.Packet raise @packet.PacketError
+
+pub fn encode_packet(@packet.Packet) -> Bytes raise @packet.PacketError
+
+pub fn new_client(@association.Config) -> @association.Association raise @association.AssocError
+
+pub fn new_server(@association.Config) -> @association.Association raise @association.AssocError
+
+pub fn open_cookie(Bytes, Bytes, UInt64, UInt64) -> @cookie.CookiePayload raise @cookie.CookieError
+
+pub fn partial_retransmit_opts(UInt32, Int32, ppid? : UInt32, unordered? : Bool) -> @association.SendOptions
+
+pub fn partial_timed_opts(UInt32, UInt64, ppid? : UInt32, unordered? : Bool) -> @association.SendOptions
+
+pub fn process_stateless_init(@association.Config, BytesView, UInt64) -> Bytes raise @association.AssocError
+
+pub fn reliable_opts(UInt32, ppid? : UInt32) -> @association.SendOptions
+
+pub fn run_handshake_loop(@association.Association, @association.Association, UInt64) -> (Int32, Int32) raise @association.AssocError
+
+pub fn seal_cookie(Bytes, @cookie.CookiePayload) -> Bytes
+
+pub fn server_config(UInt32, UInt32, UInt32, UInt32, Bytes, num_outbound_streams? : UInt32, num_inbound_streams? : UInt32) -> @association.Config
+
+pub fn unordered_opts(UInt32, ppid? : UInt32) -> @association.SendOptions
 
 // Errors
 

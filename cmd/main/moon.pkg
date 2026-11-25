@@ -1,5 +1,9 @@
-// import {
-//   "CoolrfulDARkness/moonsctp" @lib,
-// }
+import {
+  "CoolrfulDARkness/moonsctp" @sctp,
+  "CoolrfulDARkness/moonsctp/crc32c",
+  "CoolrfulDARkness/moonsctp/cookie",
+  "CoolrfulDARkness/moonsctp/packet",
+  "CoolrfulDARkness/moonsctp/association" @assoc,
+}
 
 pkgtype(kind: "executable")
