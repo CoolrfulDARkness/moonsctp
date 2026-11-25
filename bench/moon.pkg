@@ -1,0 +1,7 @@
+import {
+  "CoolrfulDARkness/moonsctp/association" @assoc,
+  "CoolrfulDARkness/moonsctp/cookie",
+  "CoolrfulDARkness/moonsctp/crc32c",
+  "CoolrfulDARkness/moonsctp/packet",
+  "moonbitlang/core/bench",
+} for "wbtest"
