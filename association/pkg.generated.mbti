@@ -1,0 +1,131 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "CoolrfulDARkness/moonsctp/association"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const DEFAULT_A_RWND : UInt32 = 65536
+
+pub const DEFAULT_COOKIE_LIFETIME_MS : UInt64 = 60000
+
+pub const DEFAULT_MAX_MESSAGE_SIZE : Int32 = 65536
+
+pub const DEFAULT_MAX_PAYLOAD_SIZE : Int32 = 1200
+
+pub const DEFAULT_RTO_INITIAL_MS : UInt64 = 1000
+
+pub const DEFAULT_RTO_MAX_MS : UInt64 = 60000
+
+pub const DEFAULT_RTO_MIN_MS : UInt64 = 200
+
+// Errors
+#derive(Eq, @debug.Debug)
+pub suberror AssocError {
+  InvalidState(String)
+  InvalidStream(UInt32)
+  MessageTooLarge(Int32)
+  PacketError(String)
+  SecurityViolation(String)
+  InvalidConfig(String)
+}
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) enum AssocState {
+  Closed
+  CookieWait
+  CookieEchoed
+  Established
+  ShutdownPending
+  ShutdownSent
+  ShutdownReceived
+  ShutdownAckSent
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct AssocStats {
+  cwnd : Int32
+  rto_ms : UInt64
+  packets_sent : Int32
+  packets_recv : Int32
+  retransmissions : Int32
+  forward_tsn_sent : Int32
+  messages_delivered : Int32
+}
+
+pub struct Association {
+  // private fields
+}
+pub fn Association::abort(Self, Bytes) -> Unit
+pub fn Association::connect(Self, UInt64) -> Array[Bytes] raise AssocError
+pub fn Association::handle_packet(Self, BytesView, UInt64) -> Array[Event] raise AssocError
+pub fn Association::new_client(Config) -> Self raise AssocError
+pub fn Association::new_server(Config) -> Self raise AssocError
+pub fn Association::poll_outbound(Self) -> Array[Bytes]
+pub fn Association::process_stateless_init(Config, BytesView, UInt64) -> Bytes raise AssocError
+pub fn Association::send(Self, Bytes, SendOptions, UInt64) -> Unit raise AssocError
+pub fn Association::send_heartbeat(Self, Bytes, UInt64) -> Unit raise AssocError
+pub fn Association::shutdown(Self, UInt64) -> Unit raise AssocError
+pub fn Association::state(Self) -> AssocState
+pub fn Association::stats(Self) -> AssocStats
+pub fn Association::tick(Self, UInt64) -> Array[Event]
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Config {
+  local_port : UInt32
+  remote_port : UInt32
+  local_vtag : UInt32
+  initial_tsn : UInt32
+  num_outbound_streams : UInt32
+  num_inbound_streams : UInt32
+  a_rwnd : UInt32
+  max_payload_size : Int32
+  cookie_secret : Bytes
+  cookie_lifetime_ms : UInt64
+  rto_initial_ms : UInt64
+  rto_max_ms : UInt64
+  max_message_size : Int32
+}
+pub fn Config::default_client(UInt32, UInt32, UInt32, UInt32, num_outbound_streams? : UInt32, num_inbound_streams? : UInt32) -> Self
+pub fn Config::default_server(UInt32, UInt32, UInt32, UInt32, Bytes, num_outbound_streams? : UInt32, num_inbound_streams? : UInt32) -> Self
+
+#derive(Eq, @debug.Debug)
+pub(all) struct DeliveredMessage {
+  stream_id : UInt32
+  ppid : UInt32
+  unordered : Bool
+  payload : Bytes
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum Event {
+  Connected
+  Message(DeliveredMessage)
+  HeartbeatAcked(Bytes)
+  PeerShutdown
+  Closed
+  Aborted(String)
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum ReliabilityPolicy {
+  Reliable
+  MaxRetransmits(Int32)
+  TimedMs(UInt64)
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct SendOptions {
+  stream_id : UInt32
+  ppid : UInt32
+  unordered : Bool
+  reliability : ReliabilityPolicy
+}
+pub fn SendOptions::reliable(UInt32, ppid? : UInt32) -> Self
+pub fn SendOptions::unordered(UInt32, ppid? : UInt32, reliability? : ReliabilityPolicy) -> Self
+
+// Type aliases
+
+// Traits
