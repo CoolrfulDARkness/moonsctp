@@ -1,0 +1,121 @@
+name: MoonSCTP CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (Wasm / JS / Native + Wire Interop)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install MoonBit toolchain
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Print toolchain versions
+        run: |
+          moon version --all
+          python3 --version
+
+      - name: Check formatting
+        run: moon fmt --check
+
+      - name: Check generated .mbti interfaces
+        run: |
+          moon info
+          git diff --exit-code -- '*.mbti'
+
+      - name: Type-check with warnings denied
+        run: moon check -d
+
+      - name: Run test suite (Wasm)
+        run: moon test --target wasm -d
+
+      - name: Run test suite (JS)
+        run: moon test --target js -d
+
+      - name: Run test suite (Native)
+        run: moon test --target native -d
+
+      - name: Run Python CRC-32C & RFC 9260 wire interop harness
+        run: |
+          if [ ! -f harness/interop_wire.py ]; then
+            echo "harness/interop_wire.py not present; skipping wire interop."
+            exit 0
+          fi
+          python3 harness/interop_wire.py
+
+  windows:
+    name: Windows (Wasm / JS / Native MSVC + Wire Interop)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install MoonBit toolchain
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.moon\bin"
+
+      - name: Print toolchain versions
+        shell: pwsh
+        run: |
+          moon version --all
+          python --version
+
+      - name: Check formatting
+        shell: pwsh
+        run: moon fmt --check
+
+      - name: Check generated .mbti interfaces
+        shell: pwsh
+        run: |
+          moon info
+          git diff --exit-code -- '*.mbti'
+
+      - name: Type-check with warnings denied
+        shell: pwsh
+        run: moon check -d
+
+      - name: Run test suite (Wasm)
+        shell: pwsh
+        run: moon test --target wasm -d
+
+      - name: Run test suite (JS)
+        shell: pwsh
+        run: moon test --target js -d
+
+      - name: Run test suite (Native MSVC)
+        shell: pwsh
+        run: moon test --target native -d
+
+      - name: Run Python CRC-32C & RFC 9260 wire interop harness
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "harness/interop_wire.py")) {
+            Write-Host "harness/interop_wire.py not present; skipping wire interop."
+            exit 0
+          }
+          python harness/interop_wire.py
+          exit $LASTEXITCODE
