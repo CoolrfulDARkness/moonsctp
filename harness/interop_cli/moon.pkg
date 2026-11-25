@@ -1,0 +1,7 @@
+import {
+  "CoolrfulDARkness/moonsctp/cookie",
+  "CoolrfulDARkness/moonsctp/crc32c",
+  "CoolrfulDARkness/moonsctp/packet",
+}
+
+pkgtype(kind: "executable")
