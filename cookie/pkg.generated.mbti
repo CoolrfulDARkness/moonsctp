@@ -1,0 +1,44 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "CoolrfulDARkness/moonsctp/cookie"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const COOKIE_WIRE_LEN : Int32 = 64
+
+pub fn ct_eq(Bytes, Bytes) -> Bool
+
+pub fn hmac_sha256(Bytes, Bytes) -> Bytes
+
+pub fn open_cookie(Bytes, Bytes, UInt64, UInt64) -> CookiePayload raise CookieError
+
+pub fn seal_cookie(Bytes, CookiePayload) -> Bytes
+
+pub fn sha256(Bytes) -> Bytes
+
+// Errors
+#derive(Eq, @debug.Debug)
+pub suberror CookieError {
+  InvalidLength(Int32)
+  InvalidMac
+  Expired(UInt64)
+}
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct CookiePayload {
+  local_vtag : UInt32
+  peer_vtag : UInt32
+  local_tsn : UInt32
+  peer_tsn : UInt32
+  out_streams : UInt32
+  in_streams : UInt32
+  peer_arwnd : UInt32
+  created_ms : UInt64
+}
+
+// Type aliases
+
+// Traits

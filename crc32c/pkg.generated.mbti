@@ -1,0 +1,24 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "CoolrfulDARkness/moonsctp/crc32c"
+
+// Values
+pub fn crc32c(Bytes) -> UInt32
+
+pub fn crc32c_view(BytesView) -> UInt32
+
+pub fn sctp_packet_checksum(BytesView) -> UInt32
+
+// Errors
+
+// Types and methods
+pub struct Crc32c {
+  mut state : UInt32
+}
+pub fn Crc32c::finalize(Self) -> UInt32
+pub fn Crc32c::new() -> Self
+pub fn Crc32c::update(Self, Bytes) -> Unit
+pub fn Crc32c::update_view(Self, BytesView) -> Unit
+
+// Type aliases
+
+// Traits

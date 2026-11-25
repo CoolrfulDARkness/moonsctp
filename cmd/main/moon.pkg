@@ -1,0 +1,5 @@
+// import {
+//   "CoolrfulDARkness/moonsctp" @lib,
+// }
+
+pkgtype(kind: "executable")
