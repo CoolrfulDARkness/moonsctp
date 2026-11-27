@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "CoolrfulDARkness/moonsctp/web_api"
+
+// Values
+pub fn run_hol_comparison(Int32, Bool, Int32) -> String
+
+pub fn run_prsctp_demo(String, Int32, Int32) -> String
+
+pub fn run_security_drill(String) -> String
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

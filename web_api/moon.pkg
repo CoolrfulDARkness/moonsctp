@@ -1,0 +1,18 @@
+import {
+  "CoolrfulDARkness/moonsctp" @sctp,
+  "CoolrfulDARkness/moonsctp/association" @assoc,
+  "CoolrfulDARkness/moonsctp/packet",
+}
+
+options(
+  link: {
+    "js": {
+      "exports": [
+        "run_hol_comparison",
+        "run_prsctp_demo",
+        "run_security_drill",
+      ],
+      "format": "esm",
+    },
+  },
+)

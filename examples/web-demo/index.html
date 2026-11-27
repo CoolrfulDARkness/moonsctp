@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MoonSCTP — 纯 MoonBit RFC 9260/3758 混沌网络与无队头阻塞交互实验室</title>
+  <style>
+    :root {
+      --bg: #080d1a;
+      --bg-elev: #0f172a;
+      --card: rgba(17, 26, 46, 0.88);
+      --card-border: rgba(148, 163, 184, 0.16);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #818cf8;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --violet: #a78bfa;
+      --cyan: #22d3ee;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 10% -10%, rgba(56, 189, 248, 0.16), transparent 60%),
+        radial-gradient(800px 500px at 90% 0%, rgba(129, 140, 248, 0.14), transparent 60%),
+        var(--bg);
+      line-height: 1.55;
+    }
+
+    .container {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 28px 20px 56px;
+    }
+
+    header.hero {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 24px 26px;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(22, 34, 62, 0.82));
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      box-shadow: 0 20px 50px rgba(2, 6, 23, 0.45);
+    }
+
+    .hero-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--mono);
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent);
+    }
+
+    .pill.ok {
+      background: rgba(52, 211, 153, 0.12);
+      border-color: rgba(52, 211, 153, 0.32);
+      color: var(--emerald);
+    }
+
+    .pill.err {
+      background: rgba(251, 113, 133, 0.14);
+      border-color: rgba(251, 113, 133, 0.38);
+      color: var(--rose);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(20px, 2.8vw, 28px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, #f8fafc, #7dd3fc 55%, #c4b5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 960px;
+    }
+
+    .hero-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-size: 13px;
+    }
+
+    .hero-links a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(56, 189, 248, 0.45);
+    }
+
+    .hero-links a:hover {
+      color: #bae6fd;
+      border-bottom-color: #bae6fd;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 780px) {
+      .tabs { grid-template-columns: 1fr; }
+    }
+
+    .tab-btn {
+      cursor: pointer;
+      text-align: left;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--card-border);
+      color: var(--muted);
+      transition: all 0.18s ease;
+    }
+
+    .tab-btn:hover {
+      border-color: rgba(56, 189, 248, 0.45);
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(129, 140, 248, 0.16));
+      border-color: rgba(56, 189, 248, 0.65);
+      color: #f8fafc;
+      box-shadow: 0 10px 28px rgba(14, 165, 233, 0.16);
+    }
+
+    .tab-title {
+      display: block;
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .tab-desc {
+      display: block;
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 18px;
+      backdrop-filter: blur(8px);
+    }
+
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .card .hint {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      align-items: flex-end;
+    }
+
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 170px;
+    }
+
+    .ctrl-group label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .ctrl-val {
+      color: var(--accent);
+      font-family: var(--mono);
+      font-weight: 700;
+      margin-left: 6px;
+    }
+
+    input[type="range"] {
+      width: 210px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    select {
+      background: #0b1222;
+      color: var(--text);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: var(--mono);
+    }
+
+    .checkbox-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: #0b1222;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .checkbox-wrap input { accent-color: var(--accent); cursor: pointer; }
+
+    .btn {
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #04101f;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      transition: transform 0.12s ease, opacity 0.15s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); opacity: 0.95; }
+    .btn:active { transform: translateY(0); }
+
+    .btn.secondary {
+      color: var(--text);
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .kpi {
+      background: rgba(8, 13, 26, 0.72);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 13px 15px;
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .kpi-value {
+      margin-top: 4px;
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .kpi.good { border-color: rgba(52, 211, 153, 0.38); }
+    .kpi.good .kpi-value { color: var(--emerald); }
+    .kpi.bad { border-color: rgba(251, 113, 133, 0.42); }
+    .kpi.bad .kpi-value { color: var(--rose); }
+    .kpi.warn { border-color: rgba(251, 191, 36, 0.38); }
+    .kpi.warn .kpi-value { color: var(--amber); }
+
+    /* Dual HOL Comparison Timelines */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+
+    .timeline-box {
+      background: rgba(8, 13, 26, 0.72);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .timeline-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      gap: 8px;
+    }
+
+    .timeline-head h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+
+    .t-row {
+      display: grid;
+      grid-template-columns: 66px 1fr 56px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 7px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .stream-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .s0 { background: rgba(251, 191, 36, 0.16); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.35); }
+    .s1 { background: rgba(52, 211, 153, 0.16); color: var(--emerald); border: 1px solid rgba(52, 211, 153, 0.35); }
+    .s2 { background: rgba(34, 211, 238, 0.16); color: var(--cyan); border: 1px solid rgba(34, 211, 238, 0.35); }
+    .s3 { background: rgba(167, 139, 250, 0.16); color: var(--violet); border: 1px solid rgba(167, 139, 250, 0.35); }
+
+    .track {
+      position: relative;
+      height: 16px;
+      border-radius: 6px;
+      background: rgba(30, 41, 59, 0.7);
+      overflow: hidden;
+    }
+
+    .bar-seg {
+      position: absolute;
+      top: 2px;
+      height: 12px;
+      border-radius: 4px;
+      transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1), left 0.4s ease;
+    }
+
+    .bar-wire-0 { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .bar-wire-1 { background: linear-gradient(90deg, #10b981, #34d399); }
+    .bar-wire-2 { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+    .bar-wire-3 { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+    .bar-stall {
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(244, 63, 94, 0.85),
+        rgba(244, 63, 94, 0.85) 5px,
+        rgba(190, 18, 60, 0.85) 5px,
+        rgba(190, 18, 60, 0.85) 10px
+      );
+      border: 1px solid rgba(251, 113, 133, 0.9);
+    }
+
+    .lat-num {
+      text-align: right;
+      color: var(--muted);
+    }
+
+    .lat-num.stalled { color: var(--rose); font-weight: 700; }
+
+    /* PR-SCTP Event List */
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ev-item {
+      display: grid;
+      grid-template-columns: 78px 118px 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 14px;
+      border-radius: 12px;
+      background: rgba(8, 13, 26, 0.72);
+      border: 1px solid var(--card-border);
+      font-size: 13px;
+    }
+
+    @media (max-width: 680px) {
+      .ev-item { grid-template-columns: 64px 1fr; }
+    }
+
+    .ev-time {
+      font-family: var(--mono);
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .ev-kind {
+      display: inline-flex;
+      justify-content: center;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .k-handshake { background: rgba(56, 189, 248, 0.14); color: var(--accent); }
+    .k-drop { background: rgba(251, 113, 133, 0.16); color: var(--rose); }
+    .k-blocked { background: rgba(251, 191, 36, 0.16); color: var(--amber); }
+    .k-retransmit { background: rgba(167, 139, 250, 0.16); color: var(--violet); }
+    .k-forward_tsn { background: rgba(34, 211, 238, 0.22); color: #67e8f9; border: 1px solid rgba(34, 211, 238, 0.5); }
+    .k-unblocked, .k-delivered { background: rgba(52, 211, 153, 0.18); color: var(--emerald); }
+
+    /* Security Drill Buttons & Hex Inspector */
+    .attack-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .atk-btn {
+      cursor: pointer;
+      text-align: left;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(8, 13, 26, 0.78);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      transition: all 0.15s ease;
+    }
+
+    .atk-btn:hover { border-color: rgba(56, 189, 248, 0.55); }
+    .atk-btn.active {
+      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.14);
+    }
+
+    .atk-name { display: block; font-weight: 700; font-size: 13px; }
+    .atk-code { display: block; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .verdict-box {
+      padding: 16px 18px;
+      border-radius: 14px;
+      margin-bottom: 16px;
+      border: 1px solid var(--card-border);
+      background: rgba(8, 13, 26, 0.78);
+    }
+
+    .verdict-box.shield {
+      border-color: rgba(52, 211, 153, 0.5);
+      background: rgba(16, 185, 129, 0.08);
+    }
+
+    .verdict-box.baseline {
+      border-color: rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .verdict-box.danger {
+      border-color: rgba(251, 113, 133, 0.55);
+      background: rgba(244, 63, 94, 0.1);
+    }
+
+    .hex-inspector {
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.9;
+      background: #050914;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 12px;
+      padding: 14px 16px;
+      word-break: break-word;
+    }
+
+    .hx-hdr { color: #7dd3fc; background: rgba(56, 189, 248, 0.12); padding: 1px 4px; border-radius: 4px; }
+    .hx-crc { color: #fcd34d; background: rgba(251, 191, 36, 0.16); padding: 1px 4px; border-radius: 4px; }
+    .hx-body { color: #cbd5e1; }
+
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    .matrix-table th, .matrix-table td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .matrix-table th { color: var(--muted); font-size: 12px; font-weight: 600; }
+
+    footer {
+      margin-top: 28px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div class="hero-top">
+        <div class="badge-row">
+          <span class="pill">RFC 9260 SCTP</span>
+          <span class="pill">RFC 3758 PR-SCTP</span>
+          <span class="pill">Zero-FFI Pure MoonBit</span>
+        </div>
+        <span id="engine-status" class="pill">Loading MoonBit Engine...</span>
+      </div>
+      <h1>MoonSCTP — 纯 MoonBit RFC 9260/3758 混沌网络与无队头阻塞交互实验室</h1>
+      <p class="hero-sub">
+        零安装、100% 浏览器本地运行：下方所有多流交付、<code>FORWARD_TSN</code> 跳帧解锁与 4-Way Cookie 红队攻防演练均实时调用编译自纯 MoonBit 核心协议栈（<code>CoolrfulDARkness/moonsctp</code>）的真实 Sans-I/O <code>Association</code> 状态机与 Castagnoli CRC-32C / HMAC-SHA256 线级编解码器。
+      </p>
+      <div class="hero-links">
+        <a href="https://github.com/CoolrfulDARkness/moonsctp" target="_blank" rel="noopener">GitHub Repository</a>
+        <a href="https://mooncakes.io/docs/CoolrfulDARkness/moonsctp" target="_blank" rel="noopener">mooncakes.io Docs</a>
+        <span style="color:var(--muted)">Install: <code>moon add CoolrfulDARkness/moonsctp</code></span>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab-btn active" data-tab="hol" role="tab" aria-selected="true">
+        <span class="tab-title">1. 多流无队头阻塞（HOL）实时对比</span>
+        <span class="tab-desc">4-Stream SCTP vs Single-Stream Baseline · Loss &amp; Reorder</span>
+      </button>
+      <button class="tab-btn" data-tab="prsctp" role="tab" aria-selected="false">
+        <span class="tab-title">2. RFC 3758 PR-SCTP 跳帧解锁</span>
+        <span class="tab-desc">Reliable / MaxRetransmits / TimedMs · Live FORWARD_TSN</span>
+      </button>
+      <button class="tab-btn" data-tab="security" role="tab" aria-selected="false">
+        <span class="tab-title">3. 无状态 4-Way Cookie &amp; 红队攻防演练</span>
+        <span class="tab-desc">6-Mode Adversarial Suite · CRC-32C / HMAC / Anti-Hijack</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: HOL COMPARISON -->
+    <section id="panel-hol" class="panel active">
+      <div class="card">
+        <h2>多流无队头阻塞（Head-of-Line Blocking）混沌仿真对比</h2>
+        <p class="hint">
+          对同一组报文注入完全相同的丢包与乱序调度（Stream 0 遭遇丢包/抖动），同时运行 4 条独立流 SCTP 关联与单流基线关联（模拟 TCP 单字节流），直观对比跨流队头阻塞停顿时长。
+        </p>
+        <div class="controls">
+          <div class="ctrl-group">
+            <label for="hol-loss">Stream 0 丢包率 / Loss Rate <span id="hol-loss-val" class="ctrl-val">15%</span></label>
+            <input id="hol-loss" type="range" min="0" max="30" step="1" value="15" />
+          </div>
+          <div class="ctrl-group">
+            <label>乱序抖动 / Packet Reordering</label>
+            <label class="checkbox-wrap">
+              <input id="hol-reorder" type="checkbox" checked />
+              <span>启用乱序抖动 (Reorder)</span>
+            </label>
+          </div>
+          <div class="ctrl-group">
+            <label for="hol-count">消息总数 / Message Count</label>
+            <select id="hol-count">
+              <option value="8">8 messages (2/stream)</option>
+              <option value="12">12 messages (3/stream)</option>
+              <option value="16" selected>16 messages (4/stream)</option>
+              <option value="24">24 messages (6/stream)</option>
+            </select>
+          </div>
+          <button id="hol-run" class="btn">运行对比仿真 / Run Comparison</button>
+        </div>
+      </div>
+
+      <div id="hol-kpis" class="kpi-grid"></div>
+
+      <div class="compare-grid">
+        <div class="timeline-box">
+          <div class="timeline-head">
+            <h3>SCTP Multi-Stream（4 条独立流 `S0..S3`）</h3>
+            <span class="pill ok" id="hol-sctp-badge">0ms 跨流阻塞</span>
+          </div>
+          <div class="legend">
+            <span><i class="dot" style="background:#fbbf24"></i>Stream 0 (受丢包影响)</span>
+            <span><i class="dot" style="background:#34d399"></i>Stream 1</span>
+            <span><i class="dot" style="background:#22d3ee"></i>Stream 2</span>
+            <span><i class="dot" style="background:#a78bfa"></i>Stream 3</span>
+          </div>
+          <div id="hol-sctp-rows"></div>
+        </div>
+
+        <div class="timeline-box">
+          <div class="timeline-head">
+            <h3>Single-Stream Baseline（单有序流 HOL 阻塞基线）</h3>
+            <span class="pill err" id="hol-single-badge">HOL Stalled</span>
+          </div>
+          <div class="legend">
+            <span><i class="dot" style="background:#38bdf8"></i>线上传输 / 重传</span>
+            <span><i class="dot" style="background:#f43f5e"></i>已到达但被队头阻塞停顿 (HOL Stall)</span>
+          </div>
+          <div id="hol-single-rows"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: PR-SCTP -->
+    <section id="panel-prsctp" class="panel">
+      <div class="card">
+        <h2>RFC 3758 PR-SCTP 部分可靠传输与 <code>FORWARD_TSN</code> 跳帧解锁</h2>
+        <p class="hint">
+          在 Stream 0 上先发送一帧实时媒体数据（SSN 0，前 N 次传输被丢弃），紧接着发送一帧可靠关键帧（SSN 1）。观察 <code>Reliable</code>、<code>MaxRetransmits</code> 与 <code>TimedMs</code> 策略下的 <code>FORWARD_TSN</code> 触发与后续帧解锁耗时差异。
+        </p>
+        <div class="controls">
+          <div class="ctrl-group">
+            <label for="pr-policy">可靠性策略 / Reliability Policy</label>
+            <select id="pr-policy">
+              <option value="reliable">Reliable (完全可靠 · 持续重传)</option>
+              <option value="max_retransmits" selected>MaxRetransmits (最大重传次数限制)</option>
+              <option value="timed_ms">TimedMs (毫秒级 TTL 生存期)</option>
+            </select>
+          </div>
+          <div class="ctrl-group">
+            <label for="pr-param" id="pr-param-label">最大重传次数 / MaxRetransmits <span id="pr-param-val" class="ctrl-val">1</span></label>
+            <input id="pr-param" type="range" min="0" max="4" step="1" value="1" />
+          </div>
+          <div class="ctrl-group">
+            <label for="pr-drop">首帧连续丢包次数 / Drop First N <span id="pr-drop-val" class="ctrl-val">2</span></label>
+            <input id="pr-drop" type="range" min="0" max="4" step="1" value="2" />
+          </div>
+          <button id="pr-run" class="btn">执行 PR-SCTP 演练 / Run PR-SCTP</button>
+        </div>
+      </div>
+
+      <div id="pr-kpis" class="kpi-grid"></div>
+
+      <div class="card">
+        <h2>协议状态机实时事件时间线（Real `@association` Wire Trace）</h2>
+        <p class="hint">每一行均由真实 MoonBit <code>Association::send</code> / <code>handle_packet</code> / <code>tick</code> 产生。</p>
+        <div id="pr-events" class="event-list"></div>
+      </div>
+    </section>
+
+    <!-- TAB 3: SECURITY DRILL -->
+    <section id="panel-security" class="panel">
+      <div class="card">
+        <h2>无状态 4-Way HMAC Cookie 握手与 6 类红队对抗演练</h2>
+        <p class="hint">
+          点击任意攻击模式，实时对纯 MoonBit <code>Association</code> 执行真实线级字节构造、位翻转篡改或协议注入攻击，并检视拦截裁决与原始报文十六进制预览。
+        </p>
+        <div class="attack-grid" id="attack-buttons">
+          <button class="atk-btn active" data-mode="none">
+            <span class="atk-name">正常握手 (Baseline)</span>
+            <span class="atk-code">none · Stateless 4-Way + DATA</span>
+          </button>
+          <button class="atk-btn" data-mode="crc32c_tamper">
+            <span class="atk-name">CRC-32C 单比特篡改</span>
+            <span class="atk-code">crc32c_tamper · 1-bit flip</span>
+          </button>
+          <button class="atk-btn" data-mode="cookie_tamper">
+            <span class="atk-name">HMAC Cookie 篡改</span>
+            <span class="atk-code">cookie_tamper · ct_eq MAC check</span>
+          </button>
+          <button class="atk-btn" data-mode="cookie_hijack_established">
+            <span class="atk-name">已建连 COOKIE_ECHO 劫持</span>
+            <span class="atk-code">cookie_hijack_established · Anti-Hijack</span>
+          </button>
+          <button class="atk-btn" data-mode="future_sack">
+            <span class="atk-name">恶意未来 SACK 注入</span>
+            <span class="atk-code">future_sack · cum_tsn_ack >= next_tsn</span>
+          </button>
+          <button class="atk-btn" data-mode="forged_abort">
+            <span class="atk-name">伪造 ABORT（错 VTag）</span>
+            <span class="atk-code">forged_abort · RFC 9260 §8.5.1</span>
+          </button>
+        </div>
+        <button id="sec-run-all" class="btn secondary">一键全量 6 项红队回归 / Run All 6 Drills</button>
+      </div>
+
+      <div id="sec-verdict" class="verdict-box baseline"></div>
+      <div id="sec-kpis" class="kpi-grid"></div>
+
+      <div class="card">
+        <h2>RFC 9260 线级报文十六进制检视器（Wire Packet Hex Inspector）</h2>
+        <p class="hint">
+          <span class="hx-hdr">蓝色 [0..7]</span> 源/目的端口 &amp; Verification Tag ·
+          <span class="hx-crc">琥珀色 [8..11]</span> Castagnoli CRC-32C（小端） ·
+          <span class="hx-body">浅灰 [12+]</span> Chunk 头与载荷字节
+        </p>
+        <div id="sec-hex" class="hex-inspector"></div>
+      </div>
+
+      <div id="sec-matrix-card" class="card" style="display:none">
+        <h2>6 项红队攻防全量回归矩阵（6/6 Security Matrix）</h2>
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th>攻击模式</th>
+              <th>拦截状态</th>
+              <th>关联状态</th>
+              <th>握手字节</th>
+              <th>协议裁决</th>
+            </tr>
+          </thead>
+          <tbody id="sec-matrix-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      MoonSCTP · Pure MoonBit RFC 9260 SCTP &amp; RFC 3758 PR-SCTP · Zero External Dependencies · Apache-2.0
+    </footer>
+  </div>
+
+  <script type="module">
+    const statusEl = document.getElementById("engine-status");
+    let engine = null;
+
+    async function loadEngine() {
+      try {
+        const mod = await import("./web_api.js");
+        return { mod, source: "./web_api.js (Pages Bundle)" };
+      } catch (_err) {
+        const mod = await import("../../_build/js/release/build/web_api/web_api.js");
+        return { mod, source: "../../_build/js/release/build/web_api/web_api.js (Local)" };
+      }
+    }
+
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderKpis(elId, items) {
+      document.getElementById(elId).innerHTML = items
+        .map(
+          (item) => `
+          <div class="kpi ${item.tone || ""}">
+            <div class="kpi-label">${esc(item.label)}</div>
+            <div class="kpi-value">${esc(item.value)}</div>
+            ${item.sub ? `<div class="kpi-sub">${esc(item.sub)}</div>` : ""}
+          </div>`
+        )
+        .join("");
+    }
+
+    // -----------------------------------------------------------------------
+    // Tab Switching
+    // -----------------------------------------------------------------------
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll(".tab-btn").forEach((b) => {
+          const active = b.dataset.tab === tab;
+          b.classList.toggle("active", active);
+          b.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        document.querySelectorAll(".panel").forEach((p) => {
+          p.classList.toggle("active", p.id === `panel-${tab}`);
+        });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Tab 1: HOL Comparison
+    // -----------------------------------------------------------------------
+    const holLoss = document.getElementById("hol-loss");
+    const holLossVal = document.getElementById("hol-loss-val");
+    const holReorder = document.getElementById("hol-reorder");
+    const holCount = document.getElementById("hol-count");
+
+    holLoss.addEventListener("input", () => {
+      holLossVal.textContent = `${holLoss.value}%`;
+    });
+
+    function runHol() {
+      if (!engine) return;
+      const loss = Number(holLoss.value);
+      const reorder = holReorder.checked;
+      const count = Number(holCount.value);
+      const data = JSON.parse(engine.run_hol_comparison(loss, reorder, count));
+      if (!data.ok) {
+        alert("HOL simulation failed: " + data.error);
+        return;
+      }
+
+      const stallDiff = data.single_stream_hol_stall_ms - data.sctp_hol_stall_ms;
+      renderKpis("hol-kpis", [
+        {
+          label: "SCTP 跨流 HOL 停顿",
+          value: `${data.sctp_hol_stall_ms} ms`,
+          sub: "Streams 1..3 独立交付",
+          tone: "good",
+        },
+        {
+          label: "单流基线 HOL 停顿",
+          value: `${data.single_stream_hol_stall_ms} ms`,
+          sub: stallDiff > 0 ? `比 SCTP 多停顿 +${stallDiff} ms` : "当前无丢包与乱序",
+          tone: data.single_stream_hol_stall_ms > 0 ? "bad" : "good",
+        },
+        {
+          label: "SCTP Stream 1–3 平均延迟",
+          value: `${data.sctp_other_streams_latency_ms} ms`,
+          sub: "不受 Stream 0 丢包影响",
+          tone: "good",
+        },
+        {
+          label: "SCTP Stream 0 平均延迟",
+          value: `${data.sctp_stream0_latency_ms} ms`,
+          sub: `丢包 ${data.packets_dropped} · 重传 ${data.retransmissions}`,
+          tone: data.packets_dropped > 0 ? "warn" : "",
+        },
+        {
+          label: "无损交付进度",
+          value: `${data.messages_delivered}/${data.msg_count}`,
+          sub: `总发包 ${data.packets_sent} pkts`,
+        },
+      ]);
+
+      document.getElementById("hol-sctp-badge").textContent =
+        `跨流停顿 ${data.sctp_hol_stall_ms} ms`;
+      const singleBadge = document.getElementById("hol-single-badge");
+      singleBadge.textContent = `平均 HOL 停顿 ${data.single_stream_hol_stall_ms} ms`;
+      singleBadge.className =
+        data.single_stream_hol_stall_ms > 0 ? "pill err" : "pill ok";
+
+      const events = data.stream_events;
+      const minT = Math.min(...events.map((e) => e.sent_ms));
+      const maxT = Math.max(
+        ...events.map((e) => Math.max(e.sctp_delivered_ms, e.single_delivered_ms)),
+        minT + 100
+      );
+      const span = Math.max(1, maxT - minT);
+
+      const sctpHtml = events
+        .map((ev) => {
+          const leftPct = ((ev.sent_ms - minT) / span) * 100;
+          const widthPct = Math.max(2, ((ev.sctp_delivered_ms - ev.sent_ms) / span) * 100);
+          const dropNote = ev.dropped_count > 0 ? ` ×${ev.dropped_count}` : "";
+          return `
+            <div class="t-row">
+              <span class="stream-tag s${ev.stream_id}">S${ev.stream_id} #${ev.msg_id}${dropNote}</span>
+              <div class="track">
+                <div class="bar-seg bar-wire-${ev.stream_id}" data-target-w="${widthPct.toFixed(2)}" style="left:${leftPct.toFixed(2)}%;width:0%"></div>
+              </div>
+              <span class="lat-num">${ev.sctp_latency_ms}ms</span>
+            </div>`;
+        })
+        .join("");
+
+      const singleHtml = events
+        .map((ev) => {
+          const leftPct = ((ev.sent_ms - minT) / span) * 100;
+          const wireEnd = ev.single_arrived_ms >= ev.sent_ms ? ev.single_arrived_ms : ev.single_delivered_ms;
+          const wirePct = Math.max(2, ((wireEnd - ev.sent_ms) / span) * 100);
+          const stallLeft = ((wireEnd - minT) / span) * 100;
+          const stallPct = Math.max(0, ((ev.single_delivered_ms - wireEnd) / span) * 100);
+          const isStalled = ev.single_stall_ms > 0;
+          return `
+            <div class="t-row">
+              <span class="stream-tag s${ev.stream_id}">M#${ev.msg_id}</span>
+              <div class="track">
+                <div class="bar-seg bar-wire-${ev.stream_id}" data-target-w="${wirePct.toFixed(2)}" style="left:${leftPct.toFixed(2)}%;width:0%"></div>
+                ${
+                  isStalled
+                    ? `<div class="bar-seg bar-stall" title="HOL Stall: ${ev.single_stall_ms}ms" data-target-w="${Math.max(1.5, stallPct).toFixed(2)}" style="left:${stallLeft.toFixed(2)}%;width:0%"></div>`
+                    : ""
+                }
+              </div>
+              <span class="lat-num ${isStalled ? "stalled" : ""}">${ev.single_latency_ms}ms</span>
+            </div>`;
+        })
+        .join("");
+
+      document.getElementById("hol-sctp-rows").innerHTML = sctpHtml;
+      document.getElementById("hol-single-rows").innerHTML = singleHtml;
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          document.querySelectorAll("#panel-hol .bar-seg").forEach((bar) => {
+            bar.style.width = `${bar.dataset.targetW}%`;
+          });
+        });
+      });
+    }
+
+    document.getElementById("hol-run").addEventListener("click", runHol);
+    holLoss.addEventListener("change", runHol);
+    holReorder.addEventListener("change", runHol);
+    holCount.addEventListener("change", runHol);
+
+    // -----------------------------------------------------------------------
+    // Tab 2: PR-SCTP Demo
+    // -----------------------------------------------------------------------
+    const prPolicy = document.getElementById("pr-policy");
+    const prParam = document.getElementById("pr-param");
+    const prParamLabel = document.getElementById("pr-param-label");
+    const prDrop = document.getElementById("pr-drop");
+    const prDropVal = document.getElementById("pr-drop-val");
+
+    function syncPrParamUi() {
+      const p = prPolicy.value;
+      if (p === "timed_ms") {
+        prParam.min = "1";
+        prParam.max = "4";
+        if (Number(prParam.value) < 1) prParam.value = "1";
+        prParam.disabled = false;
+        prParamLabel.innerHTML = `TTL 生存时长 / TimedMs <span id="pr-param-val" class="ctrl-val">${Number(prParam.value) * 150} ms</span>`;
+      } else if (p === "max_retransmits") {
+        prParam.min = "0";
+        prParam.max = "4";
+        prParam.disabled = false;
+        prParamLabel.innerHTML = `最大重传次数 / MaxRetransmits <span id="pr-param-val" class="ctrl-val">${prParam.value}</span>`;
+      } else {
+        prParam.disabled = true;
+        prParamLabel.innerHTML = `策略参数 / Reliable <span id="pr-param-val" class="ctrl-val">∞ (不放弃)</span>`;
+      }
+    }
+
+    prPolicy.addEventListener("change", () => {
+      syncPrParamUi();
+      runPrSctp();
+    });
+    prParam.addEventListener("input", syncPrParamUi);
+    prParam.addEventListener("change", runPrSctp);
+    prDrop.addEventListener("input", () => {
+      prDropVal.textContent = prDrop.value;
+    });
+    prDrop.addEventListener("change", runPrSctp);
+
+    function runPrSctp() {
+      if (!engine) return;
+      const policy = prPolicy.value;
+      const paramVal = Number(prParam.value);
+      const dropN = Number(prDrop.value);
+      const data = JSON.parse(engine.run_prsctp_demo(policy, paramVal, dropN));
+      if (!data.ok) {
+        alert("PR-SCTP demo failed: " + data.error);
+        return;
+      }
+
+      renderKpis("pr-kpis", [
+        {
+          label: "FORWARD_TSN 触发",
+          value: data.forward_tsn_emitted ? "EMITTED (0xC0)" : "NO",
+          sub: data.forward_tsn_emitted ? "已发送跳帧指令解锁接收端" : "未触发放弃（可靠完整重传）",
+          tone: data.forward_tsn_emitted ? "good" : "warn",
+        },
+        {
+          label: "放弃旧分片数",
+          value: String(data.abandoned_chunks),
+          sub: data.ephemeral_delivered ? "实时帧经重传后交付" : "过期/超限实时帧已放弃",
+        },
+        {
+          label: "后续可靠关键帧",
+          value: data.followup_delivered ? "DELIVERED" : "STALLED",
+          sub: "同流 SSN 1 可靠消息",
+          tone: data.followup_delivered ? "good" : "bad",
+        },
+        {
+          label: "后续帧解锁耗时",
+          value: `${data.unblock_time_ms} ms`,
+          sub: `T3-rtx 重传次数: ${data.retransmissions}`,
+          tone: data.unblock_time_ms <= 500 ? "good" : "warn",
+        },
+      ]);
+
+      document.getElementById("pr-events").innerHTML = data.events
+        .map(
+          (ev) => `
+          <div class="ev-item">
+            <span class="ev-time">t=${ev.t_ms}ms</span>
+            <span class="ev-kind k-${esc(ev.kind)}">${esc(ev.kind)}</span>
+            <span>${esc(ev.detail)}</span>
+          </div>`
+        )
+        .join("");
+    }
+
+    document.getElementById("pr-run").addEventListener("click", runPrSctp);
+
+    // -----------------------------------------------------------------------
+    // Tab 3: Red-Team Security Drills
+    // -----------------------------------------------------------------------
+    let currentAttack = "none";
+
+    function highlightWireHex(hexStr) {
+      const parts = hexStr.split(" ");
+      return parts
+        .map((tok, idx) => {
+          if (idx < 8 && /^[0-9A-F]{2}$/.test(tok)) {
+            return `<span class="hx-hdr">${tok}</span>`;
+          }
+          if (idx >= 8 && idx < 12 && /^[0-9A-F]{2}$/.test(tok)) {
+            return `<span class="hx-crc">${tok}</span>`;
+          }
+          return `<span class="hx-body">${esc(tok)}</span>`;
+        })
+        .join(" ");
+    }
+
+    function runSecurity(mode) {
+      if (!engine) return;
+      currentAttack = mode;
+      document.querySelectorAll(".atk-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.mode === mode);
+      });
+
+      const data = JSON.parse(engine.run_security_drill(mode));
+      if (!data.ok) {
+        alert("Security drill error: " + data.error);
+        return;
+      }
+
+      const verdictEl = document.getElementById("sec-verdict");
+      const isBaseline = mode === "none";
+      verdictEl.className = `verdict-box ${
+        isBaseline ? "baseline" : data.attack_blocked ? "shield" : "danger"
+      }`;
+      verdictEl.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <strong style="font-size:15px">${
+            isBaseline
+              ? "BASELINE VERIFIED · 正常握手基线通过"
+              : data.attack_blocked
+                ? "ATTACK BLOCKED · 攻击已成功拦截"
+                : "SECURITY ALERT · 攻击未被拦截"
+          }</strong>
+          <span class="pill ${isBaseline ? "" : data.attack_blocked ? "ok" : "err"}">${esc(data.attack_mode)}</span>
+        </div>
+        <div style="margin-top:8px;font-family:var(--mono);font-size:13px">${esc(data.verdict)}</div>
+      `;
+
+      renderKpis("sec-kpis", [
+        {
+          label: "安全裁决 / Blocked",
+          value: isBaseline ? "N/A (Baseline)" : data.attack_blocked ? "TRUE (BLOCKED)" : "FALSE",
+          tone: isBaseline ? "" : data.attack_blocked ? "good" : "bad",
+        },
+        {
+          label: "最终关联状态 / State",
+          value: data.association_state,
+          sub: mode === "cookie_tamper" ? "未建立非法会话 (Closed)" : "合法会话保持活跃",
+          tone: "good",
+        },
+        {
+          label: "4-Way 握手线级字节",
+          value: `${data.handshake_bytes} B`,
+          sub: "含 64B HMAC-SHA256 Cookie",
+        },
+      ]);
+
+      document.getElementById("sec-hex").innerHTML = highlightWireHex(data.wire_hex_preview);
+    }
+
+    document.querySelectorAll(".atk-btn").forEach((btn) => {
+      btn.addEventListener("click", () => runSecurity(btn.dataset.mode));
+    });
+
+    document.getElementById("sec-run-all").addEventListener("click", () => {
+      if (!engine) return;
+      const modes = [
+        "none",
+        "crc32c_tamper",
+        "cookie_tamper",
+        "cookie_hijack_established",
+        "future_sack",
+        "forged_abort",
+      ];
+      const rows = modes.map((m) => JSON.parse(engine.run_security_drill(m)));
+      document.getElementById("sec-matrix-body").innerHTML = rows
+        .map((r) => {
+          const badge =
+            r.attack_mode === "none"
+              ? `<span class="pill">BASELINE</span>`
+              : r.attack_blocked
+                ? `<span class="pill ok">BLOCKED</span>`
+                : `<span class="pill err">FAILED</span>`;
+          return `
+            <tr>
+              <td><code>${esc(r.attack_mode)}</code></td>
+              <td>${badge}</td>
+              <td><code>${esc(r.association_state)}</code></td>
+              <td><code>${r.handshake_bytes} B</code></td>
+              <td>${esc(r.verdict)}</td>
+            </tr>`;
+        })
+        .join("");
+      document.getElementById("sec-matrix-card").style.display = "block";
+    });
+
+    // -----------------------------------------------------------------------
+    // Bootstrap
+    // -----------------------------------------------------------------------
+    loadEngine()
+      .then(({ mod, source }) => {
+        engine = mod;
+        statusEl.textContent = `Engine Ready · ${source}`;
+        statusEl.className = "pill ok";
+        syncPrParamUi();
+        runHol();
+        runPrSctp();
+        runSecurity("none");
+      })
+      .catch((err) => {
+        statusEl.textContent = "Engine Load Failed (build web_api --target js --release)";
+        statusEl.className = "pill err";
+        console.error(err);
+      });
+  </script>
+</body>
+</html>

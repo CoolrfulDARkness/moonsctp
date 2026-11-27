@@ -1,0 +1,5 @@
+import {
+  "CoolrfulDARkness/moonsctp" @sctp,
+  "CoolrfulDARkness/moonsctp/association" @assoc,
+  "CoolrfulDARkness/moonsctp/cookie",
+} for "test"
