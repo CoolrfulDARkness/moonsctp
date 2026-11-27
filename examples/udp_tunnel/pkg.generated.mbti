@@ -1,0 +1,74 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "CoolrfulDARkness/moonsctp_udp_tunnel_example"
+
+import {
+  "CoolrfulDARkness/moonsctp/association",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub async fn run_fragmented_bidirectional_udp_drill() -> FragmentedUdpReport
+
+pub async fn run_full_rfc6951_udp_tunnel() -> UdpTunnelReport
+
+pub async fn run_stateless_cookie_security_udp_drill() -> StatelessCookieDrillReport
+
+pub async fn run_timed_prsctp_udp_drill() -> TimedPrSctpReport
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct FragmentedUdpReport {
+  server_received_len : Int32
+  client_received_len : Int32
+  server_payload_match : Bool
+  client_payload_match : Bool
+  udp_datagrams_c2s : Int32
+  udp_datagrams_s2c : Int32
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct StatelessCookieDrillReport {
+  stateless_init_acks : Int32
+  tampered_cookie_rejected : Bool
+  assoc_allocated_before_valid_cookie : Bool
+  valid_handshake_established : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct TimedPrSctpReport {
+  forward_tsn_sent : Int32
+  expired_msg_absent : Bool
+  followup_delivered : Bool
+  udp_datagrams_c2s : Int32
+  udp_datagrams_s2c : Int32
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct UdpTunnelReport {
+  server_addr : String
+  client_addr : String
+  stateless_init_acks : Int32
+  udp_datagrams_c2s : Int32
+  udp_datagrams_s2c : Int32
+  udp_bytes_c2s : Int32
+  udp_bytes_s2c : Int32
+  simulated_drops : Int32
+  stream1_delivered_before_s0_rtx : Int32
+  stream2_unordered_delivered_before_s0_rtx : Int32
+  fast_retransmissions : Int32
+  forward_tsn_sent : Int32
+  prsctp_skipped_absent : Bool
+  prsctp_followup_unblocked : Bool
+  server_delivered : Array[@association.DeliveredMessage]
+  client_delivered : Array[@association.DeliveredMessage]
+  heartbeat_acked : Bool
+  heartbeat_payload : Bytes
+  client_closed_gracefully : Bool
+  server_closed_gracefully : Bool
+}
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,8 @@
+import {
+  "CoolrfulDARkness/moonsctp_udp_tunnel_example" @tunnel,
+  "moonbitlang/async",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "native"

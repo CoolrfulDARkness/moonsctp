@@ -1,0 +1,9 @@
+import {
+  "CoolrfulDARkness/moonsctp" @sctp,
+  "CoolrfulDARkness/moonsctp/association" @assoc,
+  "CoolrfulDARkness/moonsctp/packet",
+  "moonbitlang/async",
+  "moonbitlang/async/socket",
+}
+
+supported_targets = "native"

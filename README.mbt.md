@@ -63,7 +63,16 @@ python harness/interop_wire.py
 ```
 使用纯标准库 Python 3 独立实现的无表按位 Castagnoli CRC-32C 与 14 类 Chunk 字节级解包器，完成 **10/10 双向字节级互验**（含非 4 倍数载荷填充、TSN 回绕与规范重编码逐字节一致）。
 
-### 5. 代码调用示例（Sans-I/O 无状态握手与多流通信）
+### 5. 运行独立 RFC 6951 SCTP-over-UDP 真实 OS 套接字环回隧道（Native）
+独立子模块 [`examples/udp_tunnel/`](examples/udp_tunnel/README.md) 隔离引入 `moonbitlang/async`（核心库 `moon.mod` 始终保持**零外部依赖**），基于真实 `127.0.0.1` OS UDP 套接字（`UdpServer` / `UdpClient`）跑通无状态 4-Way Cookie 握手、Stream 0/1/2 并发有序/无序交付 + 丢包 3-SACK 快速重传、PR-SCTP `FORWARD_TSN` 跳帧、`HEARTBEAT` 保活与优雅 3-Way `SHUTDOWN`：
+```bash
+cd examples/udp_tunnel
+moon update
+moon test --target native -d    # 4 项真实 UDP 自动化端到端测试
+moon run cmd --target native    # 4 阶段实时 UDP 环回隧道演示
+```
+
+### 6. 代码调用示例（Sans-I/O 无状态握手与多流通信）
 ```moonbit nocheck
 let c_cfg = @moonsctp.client_config(5000U, 5001U, 0x11223344U, 1000U)
 let s_cfg = @moonsctp.server_config(
@@ -135,13 +144,14 @@ moonsctp/
 ├── bench/               # 12 项三端性能基准套件 (moon bench)
 ├── harness/             # 零依赖 Python 独立 RFC 9260 解包器与按位 CRC-32C 双向对拍
 ├── examples/
+│   ├── udp_tunnel/      # 独立 RFC 6951 SCTP-over-UDP 真实 OS 套接字环回隧道（Native moonbitlang/async）
 │   ├── web-demo/        # 零安装浏览器交互实验室 (GitHub Pages) + Node 22 ESM 冒烟脚本
 │   └── consumer/        # 独立外部消费工程（直接依赖 mooncakes.io 已发布包验证）
 └── docs/
     ├── ARCHITECTURE.md      # 分层架构、RFC 9260/3758/1982 逐条款覆盖矩阵与范围边界
     ├── SECURITY_AUDIT.md    # 红队安全对抗审计与 7 项缺陷修复闭环实录
     ├── VERIFICATION_LOG.md  # 五层验证闭环、混沌仿真与双向线级对拍实录
-    └── ROADMAP.md           # 前瞻开发路线图 (v0.3.0 → v1.0.0+)
+    └── ROADMAP.md           # 前瞻开发路线图 (v0.4.0 → v1.0.0+)
 ```
 
 - 详细架构设计、RFC 逐条款覆盖矩阵与非目标边界说明：见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

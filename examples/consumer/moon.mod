@@ -7,5 +7,5 @@ preferred_target = "wasm"
 description = "Standalone consumer smoke project verifying CoolrfulDARkness/moonsctp published on mooncakes.io."
 
 import {
-  "CoolrfulDARkness/moonsctp@0.1.0",
+  "CoolrfulDARkness/moonsctp@0.2.0",
 }
